@@ -1,4 +1,18 @@
 import axios from 'axios';
+import os from 'node:os';
+
+const getIpAddress = () => {
+	const interfaces = os.networkInterfaces();
+	for (const name of Object.keys(interfaces)) {
+		for (const net of interfaces[name]) {
+			// Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+			if (net.family === 'IPv4' && !net.internal) {
+				return net.address;
+			}
+		}
+	}
+	return '127.0.0.1';
+};
 
 const helloController = async (req, res) => {
 	let visitorName = req.query.visitor_name || 'Guest';
@@ -8,12 +22,17 @@ const helloController = async (req, res) => {
 	}
 
 	try {
-		const ipResponse = await axios.get('https://api.ipify.org?format=json');
-		const ip = ipResponse.data.ip;
+		// const ipResponse = await axios.get('https://api.ipify.org?format=json');
+		// const ip = req.ip;
+
+		const ip = getIpAddress();
+		console.log(ip);
 
 		const locationResponse = await axios.get(
 			`http://ip-api.com/json/${ip}`
 		);
+
+		console.log(locationResponse);
 
 		const location = locationResponse.data.city;
 		const lat = locationResponse.data.lat;
