@@ -1,54 +1,4 @@
 import axios from 'axios';
-import os from 'node:os';
-
-const getPublicIpAddress = async () => {
-	try {
-		const response = await axios.get('https://api.ipify.org?format=json');
-		return response.data.ip;
-	} catch (error) {
-		console.error('Error fetching public IP address:', error.message);
-		return '127.0.0.1'; // fallback to localhost
-	}
-};
-
-const getLocationFromIp = async (ip) => {
-	try {
-		const response = await axios.get(`http://ip-api.com/json/${ip}`);
-		if (response.data.status === 'fail') {
-			throw new Error('Location not found');
-		}
-		return {
-			city: response.data.city,
-			lat: response.data.lat,
-			lon: response.data.lon,
-		};
-	} catch (error) {
-		console.error('Error fetching location:', error.message);
-		return null;
-	}
-};
-
-// Fallback function to get more accurate location using multiple sources
-const getAccurateLocation = async (ip) => {
-	let location = await getLocationFromIp(ip);
-	if (!location) {
-		try {
-			const response = await axios.get(`https://ipinfo.io/${ip}/json`);
-			const [lat, lon] = response.data.loc.split(',');
-			location = {
-				city: response.data.city,
-				lat: parseFloat(lat),
-				lon: parseFloat(lon),
-			};
-		} catch (error) {
-			console.error(
-				'Error fetching location from fallback service:',
-				error.message
-			);
-		}
-	}
-	return location || { city: 'Unknown', lat: 0, lon: 0 };
-};
 
 const helloController = async (req, res) => {
 	let visitorName = req.query.visitor_name || 'Guest';
@@ -57,28 +7,27 @@ const helloController = async (req, res) => {
 		visitorName = visitorName.slice(1, -1);
 	}
 
+	const clientIP =
+		req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+	const ipAddress = clientIP.split(',')[0];
+
 	try {
 		// Get the public IP address
-		const publicIp = await getPublicIpAddress();
+		const location = await axios.get(`http://ip-api.com/json/${ipAddress}`);
+		const city = location.data.city || 'New York';
 
 		// Get location based on IP address
-		const location = await getAccurateLocation(publicIp);
+		const openApi = process.env.OPEN_WEATHER_API;
 
-		if (!location.city || location.city === 'Unknown') {
-			throw new Error('Location not found for the given IP address');
-		}
-
-		const { lat, lon } = location;
-
-		const weatherResponse = await axios.get(
-			`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=1c5d9fc29bf3fc7b4a88266701ca1af5&units=metric`
+		const weather = await axios.get(
+			`http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${openApi}`
 		);
-		const temperature = Math.round(weatherResponse.data.main.temp);
+		const temp = weather.data.main.temp;
 
 		res.json({
-			client_ip: publicIp,
-			location: location.city,
-			greeting: `Hello, ${visitorName}!, the temperature is ${temperature} degrees Celsius in ${location.city}`,
+			client_ip: ipAddress,
+			location: city,
+			greeting: `Hello, ${visitorName}!, the temperature is ${temp} degrees Celsius in ${city}`,
 		});
 	} catch (error) {
 		console.error('Error:', error.message);
